@@ -2,6 +2,7 @@
 
 import gvec
 import numpy as np
+import xarray as xr
 from matplotlib import pyplot as plt
 from _bounce_points import *
 from _find_bounce_pairs import *
@@ -18,7 +19,6 @@ alpha = np.linspace(
             0, 2 * np.pi, 1, endpoint=False
             )  # fieldline label
 
-#Nz = 769
 Nz = 513
 zeta_B = np.linspace(-4.0 * np.pi, 4.0 * np.pi, Nz)
 
@@ -46,11 +46,17 @@ ev["alpha"].attrs = dict(
 ev = ev.set_coords("alpha").set_xindex("alpha")
 
 # First we calculate mod_B, dB_dz (assuming derivative is in Boozer zeta)
-#state.compute(ev, "B", "dmod_B_dz", "mod_B", "kappa_B", "grad_rho")
-state.compute(ev, "B", "dmod_B_dz", "mod_B", "mod_grad_rho", "B_zeta_B", "B_contra_z_B")
+state.compute(ev, "B", "dmod_B_dz", "mod_B", "kappa_B", "mod_grad_rho", "B_zeta_B", "B_contra_z_B")
 
-#gvec.core.compute.fluxsurface_integral(quantity: DataArray)
-#state.compute.fluxsurface_integral("mod_B")
+
+# use integration points for computing integral quantities
+ev_int= state.evaluate("grad_rho","Jac",rho=rho,theta="int",zeta="int")
+# add a new quantity
+ev_int["mod_grad_rho"]= xr.dot(ev_int.grad_rho, ev_int.grad_rho, dim="xyz")
+
+# flux surface average example = int(|mod_grad_rho|*Jac)/int(Jac)
+grad_rho_avg = gvec.fluxsurface_integral(ev_int.mod_grad_rho*ev_int.Jac) / gvec.fluxsurface_integral(ev_int.Jac)
+
 
 # reduces all the quantities to 2D
 ev = ev.sel(rho=1.0)
@@ -59,6 +65,7 @@ B = ev.mod_B.data
 B_z = ev.dmod_B_dz.data
 B_sup_zeta = ev.B_contra_z_B.data
 mod_grad_rho = ev.mod_grad_rho.data # actually |grad rho|
+kappa_G = ev.kappa_G.data
 
 
 # pitch_inv in (minB,maxB)
@@ -89,8 +96,7 @@ zeta_full  = scatter_pairs_to_padded(zeta_pairs, pair_mask, fill_value=0.0)
 B_pairs = np.interp(zeta_pairs, zeta_B, B[0])
 Bzeta_pairs = np.interp(zeta_pairs, zeta_B, B_sup_zeta[0])
 grad_rho_pairs = np.interp(zeta_pairs, zeta_B, mod_grad_rho[0])
-
-kappa_g_pairs = B_pairs
+kappa_g_pairs = np.interp(zeta_pairs, zeta_B, kappa_G[0])
 
 H_pairs, I_pairs = compute_HI_pairs(
         B_pairs=B_pairs, 
@@ -113,8 +119,8 @@ L_rho = compute_L_rho(zeta_B, B_sup_zeta)
 
 eps32_base = pitch_integral_simpson(S_rp, pitch_inv, L_rho)
 
-# This one needs a flux surface average of mod_grad_rho
-grad_rho_avg = np.ones_like(B0)
+## This one needs a flux surface average of mod_grad_rho
+#grad_rho_avg = np.ones_like(B0)
 
 eps32 = eps32_base * (B0 * R0 / grad_rho_avg)**2 * (np.pi / (8.0 * np.sqrt(2.0)))
 eps_eff = eps32**(2.0 / 3.0)
