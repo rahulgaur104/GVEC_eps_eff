@@ -51,6 +51,9 @@ ev = ev.set_coords("alpha").set_xindex("alpha")
 #state.compute(ev, "B", "dmod_B_dz", "mod_B", "kappa_B", "grad_rho")
 state.compute(ev, "B", "dmod_B_dz", "mod_B", "grad_rho", "B_zeta_B", "B_contra_z_B")
 
+#gvec.core.compute.fluxsurface_integral(quantity: DataArray)
+state.compute.fluxsurface_integral("mod_B")
+
 # reduces all the quantities to 2D
 ev = ev.sel(rho=1.0)
 
