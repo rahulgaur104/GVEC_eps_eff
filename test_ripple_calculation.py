@@ -19,8 +19,11 @@ alpha = np.linspace(
             )  # fieldline label
 
 #Nz = 769
-Nz = 257
+Nz = 513
 zeta_B = np.linspace(-4.0 * np.pi, 4.0 * np.pi, Nz)
+
+R0 = state.evaluate("r_major").r_major.data
+B0 = np.max(state.evaluate("mod_B", rho=rho, theta=np.linspace(0,2*np.pi, 100) , zeta=zeta_B).mod_B.data)
 
 # evaluate the rotational transform (fieldline angle) on the desired surfaces
 iota = state.evaluate("iota", rho=rho, theta=None, zeta=None).iota
@@ -35,11 +38,6 @@ theta_B = (
 ev = gvec.EvaluationsBoozer(
             rho=rho, theta_B=theta_B, zeta_B=zeta_B, state=state,# MNfactor=5
             )
-# create the grid in PEST (currently doesn't work)
-#ev = gvec.EvaluationsPEST(
-#            rho=rho, theta_P=theta_B, zeta=phi, state=state
-#            )
-
 # set the fiedline label as poloidal coordinate & index (not necessary, but good practice)
 ev["alpha"] = ("pol", alpha)
 ev["alpha"].attrs = dict(
@@ -49,10 +47,10 @@ ev = ev.set_coords("alpha").set_xindex("alpha")
 
 # First we calculate mod_B, dB_dz (assuming derivative is in Boozer zeta)
 #state.compute(ev, "B", "dmod_B_dz", "mod_B", "kappa_B", "grad_rho")
-state.compute(ev, "B", "dmod_B_dz", "mod_B", "grad_rho", "B_zeta_B", "B_contra_z_B")
+state.compute(ev, "B", "dmod_B_dz", "mod_B", "mod_grad_rho", "B_zeta_B", "B_contra_z_B")
 
 #gvec.core.compute.fluxsurface_integral(quantity: DataArray)
-state.compute.fluxsurface_integral("mod_B")
+#state.compute.fluxsurface_integral("mod_B")
 
 # reduces all the quantities to 2D
 ev = ev.sel(rho=1.0)
@@ -60,7 +58,7 @@ ev = ev.sel(rho=1.0)
 B = ev.mod_B.data
 B_z = ev.dmod_B_dz.data
 B_sup_zeta = ev.B_contra_z_B.data
-grad_rho = ev.grad_rho.data
+mod_grad_rho = ev.mod_grad_rho.data # actually |grad rho|
 
 
 # pitch_inv in (minB,maxB)
@@ -90,12 +88,12 @@ zeta_full  = scatter_pairs_to_padded(zeta_pairs, pair_mask, fill_value=0.0)
 
 B_pairs = np.interp(zeta_pairs, zeta_B, B[0])
 Bzeta_pairs = np.interp(zeta_pairs, zeta_B, B_sup_zeta[0])
-#np.interp(zeta_pairs, zeta_B, B[0])
+grad_rho_pairs = np.interp(zeta_pairs, zeta_B, mod_grad_rho[0])
 
 kappa_g_pairs = B_pairs
-grad_rho_pairs = B_pairs
 
-H_pairs, I_pairs = compute_HI_pairs(B_pairs=B_pairs, 
+H_pairs, I_pairs = compute_HI_pairs(
+        B_pairs=B_pairs, 
         Bzeta_pairs=Bzeta_pairs,
         grad_rho_pairs=grad_rho_pairs,
         kappa_g_pairs=kappa_g_pairs,
@@ -115,13 +113,7 @@ L_rho = compute_L_rho(zeta_B, B_sup_zeta)
 
 eps32_base = pitch_integral_simpson(S_rp, pitch_inv, L_rho)
 
-# --- final DESC prefactor for effective ripple^(3/2) ---
-# B0 = max_tz |B| on each rho
-B0 = np.max(B, axis=-1)
-
-# R0 and <|grad rho|> should come from your geometry/state; for now use placeholders
-# replace these with the actual quantities from your data
-R0 = np.ones_like(B0)
+# This one needs a flux surface average of mod_grad_rho
 grad_rho_avg = np.ones_like(B0)
 
 eps32 = eps32_base * (B0 * R0 / grad_rho_avg)**2 * (np.pi / (8.0 * np.sqrt(2.0)))
