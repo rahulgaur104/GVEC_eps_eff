@@ -11,16 +11,18 @@ from ripple_calculation import *
 import os
 import pdb
 
+plot_bounce_pairs=False
+
 state = gvec.find_state(os.path.dirname(os.getcwd()))
 
-rho = [1.0]  # radial positions
+rho = [0.1]  # radial positions
 nrho = len(rho)
 alpha = np.linspace(
             0, 2 * np.pi, 1, endpoint=False
             )  # fieldline label
 
-Nz = 513
-zeta_B = np.linspace(-4.0 * np.pi, 4.0 * np.pi, Nz)
+Nz = 769
+zeta_B = np.linspace(-7.0 * np.pi, 7.0 * np.pi, Nz)
 
 R0 = state.evaluate("r_major").r_major.data
 B0 = np.max(state.evaluate("mod_B", rho=rho, theta=np.linspace(0,2*np.pi, 100) , zeta=zeta_B).mod_B.data)
@@ -46,7 +48,7 @@ ev["alpha"].attrs = dict(
 ev = ev.set_coords("alpha").set_xindex("alpha")
 
 # First we calculate mod_B, dB_dz (assuming derivative is in Boozer zeta)
-state.compute(ev, "B", "dmod_B_dz", "mod_B", "kappa_B", "mod_grad_rho", "B_zeta_B", "B_contra_z_B")
+state.compute(ev, "B", "dmod_B_dz", "mod_B", "kappa_G", "mod_grad_rho", "B_zeta_B", "B_contra_z_B")
 
 
 # use integration points for computing integral quantities
@@ -59,7 +61,7 @@ grad_rho_avg = gvec.fluxsurface_integral(ev_int.mod_grad_rho*ev_int.Jac) / gvec.
 
 
 # reduces all the quantities to 2D
-ev = ev.sel(rho=1.0)
+ev = ev.sel(rho=rho[0])
 
 B = ev.mod_B.data
 B_z = ev.dmod_B_dz.data
@@ -69,9 +71,9 @@ kappa_G = ev.kappa_G.data
 
 
 # pitch_inv in (minB,maxB)
-Np = 27
+Np = 31
 mn, mx = float(B.min()), float(B.max())
-margin = 0.03 * (mx - mn)
+margin = 0.01 * (mx - mn)
 pitch_inv = np.linspace(mn + margin, mx - margin, Np)[None, :]
 
 num_well = 25
@@ -119,46 +121,42 @@ L_rho = compute_L_rho(zeta_B, B_sup_zeta)
 
 eps32_base = pitch_integral_simpson(S_rp, pitch_inv, L_rho)
 
-## This one needs a flux surface average of mod_grad_rho
-#grad_rho_avg = np.ones_like(B0)
-
 eps32 = eps32_base * (B0 * R0 / grad_rho_avg)**2 * (np.pi / (8.0 * np.sqrt(2.0)))
 eps_eff = eps32**(2.0 / 3.0)
+
 
 print("S_rp =", S_rp)
 print("L_rho =", L_rho)
 print("eps32_base =", eps32_base)
-print("effective ripple 3/2 =", eps32)
-print("effective ripple =", eps_eff)
+print("effective ripple 3/2 =", eps32.data)
+print("effective ripple =", eps_eff.data)
 
 
-## ---- plotting ----
-#fig, ax = plt.subplots(figsize=(12, 5.5))
-#ax.plot(zeta_B, B[0], lw=2)
-##ax.plot(phi, B_z[0]+50, '-k', lw=0.5)
-#ax.set_xlabel(r"$\zeta$")
-#ax.set_ylabel(r"$|B(\zeta)|$")
-#ax.set_title(r"Bounce points on a finite snapshot: $|B(\zeta)|$ and intersections with pitch\_inv")
-#
-#pad = 0.05 * (mx - mn)
-#ax.set_ylim(mn - pad, mx + pad)
-#
-#for p in range(Np):
-#    pv = pitch_inv[0, p]
-#    ax.axhline(pv, ls="--", lw=1, alpha=0.35)
-#    for w in range(num_well):
-#        a = z1[0, p, w]
-#        b = z2[0, p, w]
-#        if a == 0.0 and b == 0.0:
-#            continue
-#        ax.plot([a, b], [pv, pv], lw=3, alpha=0.85)
-#        ax.scatter([a], [pv], s=45, marker="o")  # z1
-#        ax.scatter([b], [pv], s=55, marker="x")  # z2
-#
-#fig.tight_layout()
-#fig.savefig("bounce_points_debug.png" , dpi=400)
-#plt.show()
-#
-#
-#
-#pdb.set_trace()
+if plot_bounce_pairs:
+    # ---- plotting ----
+    fig, ax = plt.subplots(figsize=(12, 5.5))
+    ax.plot(zeta_B, B[0], lw=2)
+    #ax.plot(phi, B_z[0]+50, '-k', lw=0.5)
+    ax.set_xlabel(r"$\zeta$")
+    ax.set_ylabel(r"$|B(\zeta)|$")
+    ax.set_title(r"Bounce points on a finite snapshot: $|B(\zeta)|$ and intersections with pitch\_inv")
+    
+    pad = 0.05 * (mx - mn)
+    ax.set_ylim(mn - pad, mx + pad)
+    
+    for p in range(Np):
+        pv = pitch_inv[0, p]
+        ax.axhline(pv, ls="--", lw=1, alpha=0.35)
+        for w in range(num_well):
+            a = z1[0, p, w]
+            b = z2[0, p, w]
+            if a == 0.0 and b == 0.0:
+                continue
+            ax.plot([a, b], [pv, pv], lw=3, alpha=0.85)
+            ax.scatter([a], [pv], s=45, marker="o")  # z1
+            ax.scatter([b], [pv], s=55, marker="x")  # z2
+    
+    fig.tight_layout()
+    fig.savefig("bounce_points_debug.png" , dpi=400)
+
+
